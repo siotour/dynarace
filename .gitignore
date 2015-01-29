@@ -1,1 +1,5 @@
+# Notes folder
 /notes
+
+# Python byte files
+*.pyc
