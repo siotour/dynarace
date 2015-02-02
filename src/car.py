@@ -10,6 +10,8 @@ class Car(pygame.sprite.Sprite):
     def __init__(self, image, position):
         pygame.sprite.Sprite.__init__(self)
         self.src_image = pygame.image.load(image)
+        # Correct for car being upside-down
+        self.src_image = pygame.transform.rotate(self.src_image, 180)
         self.rect = self.src_image.get_rect()
         self.position = self.old_position = position
         self.speed = self.old_speed = 0
@@ -47,14 +49,14 @@ class Car(pygame.sprite.Sprite):
         if deltat >= 0:
             self.processKeys()
         x, y = self.old_position = self.position
-        x += -self.speed*math.sin(self.direction * math.pi / 180)
-        y += -self.speed*math.cos(self.direction * math.pi / 180)
+        x += self.speed*math.sin(self.direction * math.pi / 180)
+        y += self.speed*math.cos(self.direction * math.pi / 180)
         self.position = (x, y)
         self.image = pygame.transform.rotate(self.src_image, self.direction)
         self.rect = self.image.get_rect()
         self.rect.center = self.position
         self.aabb.center = self.position
-        self.bounding_box = BoundingBox(self.aabb, self.direction)
+        self.bounding_box = BoundingBox(self.aabb, -1 * self.direction)
 
     def collide(self):
         self.speed = 0
@@ -64,4 +66,4 @@ class Car(pygame.sprite.Sprite):
         self.rect = self.image.get_rect()
         self.rect.center = self.position
         self.aabb.center = self.position
-        self.bounding_box = BoundingBox(self.aabb, self.direction)
+        self.bounding_box = BoundingBox(self.aabb, -1 * self.direction)

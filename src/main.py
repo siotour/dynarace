@@ -34,5 +34,7 @@ while 1:
                 #print(BoundingBox(segment.rect))
                 car.collide()
     car_group.draw(screen)
+    points = [car.bounding_box.a, car.bounding_box.b, car.bounding_box.c, car.bounding_box.d]
+    pygame.draw.lines(screen, pygame.Color('red'), True, points)
     track.draw(screen)
     pygame.display.flip()

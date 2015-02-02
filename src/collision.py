@@ -21,7 +21,7 @@ class BoundingBox:
         self.c = (c - rect.center).rotate(theta) + rect.center
         self.d = (d - rect.center).rotate(theta) + rect.center
 
-        print(rect, " becomes ", self.__str__())
+        #print(rect, " becomes ", self.__str__())
 
     def __str__(self):
         return "{}, {}, {}, {}".format(self.a, self.b, self.c, self.d)
@@ -43,7 +43,7 @@ def pointInRectangle(p, rect):
     return pointInTriangle(p, rect.a, rect.b, rect.c) or pointInTriangle(p, rect.c, rect.d, rect.a)
 
 def rectangleInRectangle(a, b):
-    return pointInRectangle(a.a, b) or pointInRectangle(a.b, b) or pointInRectangle(a.c, b) or pointInRectangle(a.d, b)
+    return pointInRectangle(a.a, b) or pointInRectangle(a.b, b) or pointInRectangle(a.c, b) or pointInRectangle(a.d, b) or pointInRectangle(b.a, a) or pointInRectangle(b.b, a) or pointInRectangle(b.c, a) or pointInRectangle(b.d, a)
 
 a = pygame.math.Vector2(2, 0)
 b = pygame.math.Vector2(0, 0)
