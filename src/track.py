@@ -10,12 +10,8 @@ class TrackSegment(pygame.sprite.DirtySprite):
         print(self.image)
 
 class Track(pygame.sprite.Group):
-    def __init__(self):
+    def __init__(self, segments):
         pygame.sprite.Group.__init__(self)
         image = pygame.image.load("track_segment.png")
-        self.segments = array.array
-        rects = [
-            Rect(100, 100, 100, 100)
-        ]
-        for rect in rects:
+        for rect in segments:
             self.add(TrackSegment(image, rect))
