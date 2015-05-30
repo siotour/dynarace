@@ -47,6 +47,12 @@ class RigidBody:
 
         self.cache_output()
 
+        #print(delta_t)
+        #print(self.vel)
+        #print(self.pos)
+        #print(self.ang_vel)
+        #print(self.angle)
+
     def cache_output(self):
         # Cache the output transforms
         self.pos_matrix = euclid.Matrix3.new_translate(self.pos.x, self.pos.y)
