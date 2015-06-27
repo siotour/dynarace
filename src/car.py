@@ -1,6 +1,6 @@
 import math, sys, pygame, pdb, euclid
 from collision import BoundingBox
-from rigid_body import RigidBody
+from rigid_body import RigidBody, pygame_to_euclid_vector
 from rigid_body import pygame_to_euclid_vector
 
 
@@ -8,26 +8,30 @@ class Car(pygame.sprite.Sprite):
     THROTTLE_TORQUE = 10.0
     BRAKE_TORQUE = 15.0
     MASS = 4
+    # Should the car stay centered on the screen?
+    STAY_CENTERED = False
 
-    def __init__(self, image, position):
+    def __init__(self, image, screen_pos, world_pos):
         pygame.sprite.Sprite.__init__(self)
+        self.world_pos = world_pos
+        self.screen_pos = screen_pos
+        self.delta_pos = pygame.math.Vector2()
         self.src_image = pygame.image.load(image)
         # Correct for car being upside-down
         self.src_image = pygame.transform.rotate(self.src_image, 180)
         self.rect = self.src_image.get_rect()
-        self.position = self.old_position = position
-        self.speed = self.old_speed = 0
-        self.direction = self.old_direction = 0
-        self.forward = self.reverse = self.left = self.right = False
+        self.rect.center = screen_pos
         self.aabb = self.rect
-        self.bounding_box = BoundingBox(self.aabb, 0)
+        self.direction = 3 * math.pi / 2
+        self.bounding_box = BoundingBox(self.aabb, self.direction)
+
+        self.forward = self.reverse = self.left = self.right = False
 
         self.force_line_pairs = []
         self.vel_line_pairs = []
 
         # Our rigid body simulator
         half_size = pygame.math.Vector2(self.rect.width * 0.25, self.rect.height * 0.25)
-        self.force_offset = pygame.math.Vector2(0, self.rect.height * 0.09)
         self.rigid_body = RigidBody(2 * half_size, self.MASS)
 
         wheel_pos = []
@@ -37,13 +41,12 @@ class Car(pygame.sprite.Sprite):
         wheel_pos.append(pygame.math.Vector2(half_size.x, half_size.y * -1))
 
         self.wheels = []
-        #self.wheels.append(Wheel(pygame.math.Vector2(0, 0), 0.5))
         self.wheels.append(Wheel(wheel_pos[0], 1))
         self.wheels.append(Wheel(wheel_pos[1], 1))
         self.wheels.append(Wheel(wheel_pos[2], 1))
         self.wheels.append(Wheel(wheel_pos[3], 1))
 
-        self.rigid_body.set_position(pygame.math.Vector2(position[0], position[1]), 3 * math.pi / 2)
+        self.rigid_body.set_position(self.world_pos, self.direction)
 
     # angle in degrees counter-clockwise
     def get_angle(self):
@@ -126,9 +129,8 @@ class Car(pygame.sprite.Sprite):
         self.wheels[1].set_steering_angle(theta)
 
     def set_throttle(self, throttle):
-        #self.wheels[0].add_torque(self.THROTTLE_TORQUE * throttle)
-        #self.wheels[1].add_torque(self.THROTTLE_TORQUE * throttle)
-        #self.wheels[0].add_torque(self.THROTTLE_TORQUE * throttle)
+        self.wheels[1].add_torque(self.THROTTLE_TORQUE * throttle)
+        self.wheels[0].add_torque(self.THROTTLE_TORQUE * throttle)
         self.wheels[2].add_torque(self.THROTTLE_TORQUE * throttle)
         self.wheels[3].add_torque(self.THROTTLE_TORQUE * throttle)
 
@@ -175,16 +177,12 @@ class Car(pygame.sprite.Sprite):
         self.processKeys()
         num = 0
         for wheel in self.wheels:
-            print("wheel"+str(num))
-            num +=1
             rel_ground_vel = self.rigid_body.rel_point_vel(wheel.pos)
             vel_pair = []
             vel_pair.append(self.rigid_body.relative_to_world(wheel.pos))
             vel_pair.append(self.rigid_body.relative_to_world(wheel.pos) + self.rigid_body.rot_relative_to_world(rel_ground_vel))
             self.vel_line_pairs.append(vel_pair)
 
-
-            #print("rel_vel="+str(rel_ground_vel))
             rel_response_force = wheel.calculate_force(rel_ground_vel, deltat)
             response_force_offset = self.rigid_body.rot_relative_to_world(rel_response_force) + self.rigid_body.relative_to_world(wheel.pos)
             force_pair = []
@@ -192,16 +190,15 @@ class Car(pygame.sprite.Sprite):
             force_pair.append( (response_force_offset.x, response_force_offset.y) )
             self.force_line_pairs.append(force_pair)
             self.rigid_body.add_rel_force(rel_response_force, wheel.pos)
+
         self.rigid_body.update(deltat)
+        self.direction = self.rigid_body.angle
+        self.delta_pos += self.rigid_body.pos - self.world_pos
+        self.world_pos = self.rigid_body.pos
 
-        #print(self.__str__())
-        #print("=====================")
-
-        self.direction = self.rigid_body.angle * 180.0 / math.pi
-
-        self.image = pygame.transform.rotate(self.src_image, -1 * self.direction) # degrees counter-clockwise
+        self.image = pygame.transform.rotate(self.src_image, -1 * self.direction * 180 / math.pi) # degrees counter-clockwise
         self.rect = self.image.get_rect()
-        self.rect.center = self.rigid_body.pos
+        self.rect.center = self.screen_pos if self.STAY_CENTERED else self.rigid_body.pos
         self.aabb.center = self.rigid_body.pos
         self.bounding_box = BoundingBox(self.aabb, self.direction)
 
@@ -218,12 +215,11 @@ class Car(pygame.sprite.Sprite):
 
 
 class Wheel:
-
+    # @param position [pygame.math.Vector2] center position of wheel relative to a rigid body
+    # @param radius [float] radius of the wheel. Used to calculate inertia
+    # @todo Add a mass parameter which will factor into the wheel's inertia
     def __init__(self, position, radius):
         self.pos = position
-        # Relative forward and side axes
-        self.forward_axis = pygame.math.Vector2()
-        self.right_axis = pygame.math.Vector2()
         self.torque = 0.0
         self.vel = 0.0
         self.radius = radius
@@ -231,7 +227,7 @@ class Wheel:
         # Initialize forward and side axes
         self.set_steering_angle(0.0)
 
-    # @param theta angle in radians, counter-clockwise
+    # @param theta [float] angle in radians, counter-clockwise
     def set_steering_angle(self, theta):
         rot_matrix = euclid.Matrix3.new_rotate(theta) # radians counter-clockwise
         forward_axis = euclid.Vector2(0.0, 1.0)
@@ -240,37 +236,49 @@ class Wheel:
         self.forward_axis = rot_matrix * forward_axis
         self.right_axis = rot_matrix * right_axis
 
+    # @param torque [float] forward torque to apply to the wheel
     def add_torque(self, torque):
         self.torque += torque
 
+    # Calculates the force generated by the wheel on the rigid body it's attached to and
+    # updates the wheel's physics model relative to an amount of elapsed time.
+    # @param ground_vel [pygame.math.Vector2] relative velocity of the ground
+    # @param delta_t [float] time in seconds since the last call to calculate_force()
+    # @return [pygame.math.Vector2] force generated by the wheel on the rigid body it's attached to
     def calculate_force(self, ground_vel, delta_t):
+        # Velocity of the tire patch. Positive is the tirepatch moving backwards in favor
+        # of forward movement.
         patch_vel = self.forward_axis * self.vel * self.radius
-        differential_vel = patch_vel - ground_vel # positive if car should accelerate; also positive if wheel should decelerate
-        #print("diff_vel="+str(differential_vel))
+        # The difference between the ground velocity and the tire patch velocity. Positive
+        # if the car should accelerate and the wheel should decelerate
+        diff_vel = patch_vel - ground_vel
 
-        euclid_differential_vel = pygame_to_euclid_vector(differential_vel)
+        # Use euclid vectors to calculate some vector projections
+        euclid_diff_vel = pygame_to_euclid_vector(diff_vel)
         euclid_right_axis = pygame_to_euclid_vector(self.right_axis)
         euclid_forward_axis = pygame_to_euclid_vector(self.forward_axis)
-        right_vel = euclid_differential_vel.project(euclid_right_axis)
-        forward_vel = euclid_differential_vel.project(euclid_forward_axis)
-        forward_mag = abs(forward_vel)
 
-        if abs(self.forward_axis + forward_vel) < (abs(self.forward_axis) + forward_mag):
-            #print('negated')
+        # Differential velocity along right axis
+        right_diff_vel = euclid_diff_vel.project(euclid_right_axis)
+        # Differential velocity component along forward axis
+        forward_diff_vel = euclid_diff_vel.project(euclid_forward_axis)
+        # Signed magnitude of the forward differential velocity component
+        forward_mag = abs(forward_diff_vel)
+        if abs(self.forward_axis + forward_diff_vel) < (abs(self.forward_axis) + forward_mag):
             forward_mag *= -1.0
 
-        response_force = right_vel * 2
-        response_force += forward_vel
+        # Response force perpendicular to the wheel's direction of rotation. Large friction coefficient because it's
+        # hard to push a wheel sideways
+        response_force = right_diff_vel * 2
+        # Response force parallel to the wheel's direction of rotation. Small friction coefficient because it's
+        # easy to rotate a wheel
+        response_force += forward_diff_vel
+        # Force of the ground will add a torque to the wheel. This and the torque previously added to the wheel
+        # will change its velocity
         self.torque -= forward_mag * self.radius
         self.vel += self.torque / self.inertia * delta_t * 0.9
         self.torque = 0.0
-
-        print("patch_vel ="+str(patch_vel))
-        print("ground_vel="+str(pygame_to_euclid_vector(ground_vel)))
-        print("diff_vel  ="+str(differential_vel))
-        print("response  ="+str(response_force))
-        print("-----------------------------------")
-
+        # Return the complete response force vector
         return response_force
 
     def __str__(self):

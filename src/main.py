@@ -12,7 +12,7 @@ clock = pygame.time.Clock()
 
 # CREATE A CAR AND RUN
 rect = screen.get_rect()
-car = Car('car.png', rect.center)
+car = Car('car.png', pygame.math.Vector2(rect.center), pygame.math.Vector2())
 car_group = pygame.sprite.RenderPlain(car)
 segments = list()
 #segments.append(Rect(100, 100, 100, 100))
