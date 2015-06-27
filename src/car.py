@@ -6,8 +6,8 @@ from rigid_body import pygame_to_euclid_vector
 
 class Car(pygame.sprite.Sprite):
     THROTTLE_TORQUE = 10.0
-    BRAKE_TORQUE = 1.0
-    MASS = 0.5
+    BRAKE_TORQUE = 15.0
+    MASS = 4
 
     def __init__(self, image, position):
         pygame.sprite.Sprite.__init__(self)
@@ -28,7 +28,7 @@ class Car(pygame.sprite.Sprite):
         # Our rigid body simulator
         half_size = pygame.math.Vector2(self.rect.width * 0.25, self.rect.height * 0.25)
         self.force_offset = pygame.math.Vector2(0, self.rect.height * 0.09)
-        self.rigid_body = RigidBody(half_size, self.MASS)
+        self.rigid_body = RigidBody(2 * half_size, self.MASS)
 
         wheel_pos = []
         wheel_pos.append(half_size)
@@ -259,8 +259,8 @@ class Wheel:
             #print('negated')
             forward_mag *= -1.0
 
-        response_force = right_vel * 5
-        response_force += forward_vel * 1.0
+        response_force = right_vel * 2
+        response_force += forward_vel
         self.torque -= forward_mag * self.radius
         self.vel += self.torque / self.inertia * delta_t * 0.9
         self.torque = 0.0

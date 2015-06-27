@@ -1,65 +1,56 @@
-import math, sys, pygame
-import euclid
+import math, sys, pygame, euclid
 
+# Converts a pygame vector to a euclid vector
+# @param py_vec [pygame.math.Vector2] pygame vector
+# @return [euclid.Vector2] vector converted to a euclid vector
 def pygame_to_euclid_vector(py_vec):
     return euclid.Vector2(py_vec.x, py_vec.y)
 
 class RigidBody:
-    def __init__(self, half_size, mass):
+    # @note mass is assumed to be uniformly distributed throughout the rigid body's rectangular area
+    # @param size [pygame.math.Vector2] rectangular dimensions of the rigid body
+    # @param mass [float] mass of the rigid body
+    def __init__(self, size, mass):
         self.pos = pygame.math.Vector2()
         self.vel = pygame.math.Vector2()
         self.angle = 0
         self.ang_vel = 0
 
-        self.half_size = half_size
         self.mass = mass
-        #self.inertia = mass * (half_size.x * half_size.x + half_size.y * half_size.y) * 0.5
-        self.inertia = mass * (half_size.x * half_size.x * half_size.y * half_size.y) * (1.0 / 12.0)
-        self.rect = (-1 * half_size.x, -1 * half_size.y, 2 * half_size.x, 2 * half_size.y)
-
-        self.pos_matrix = euclid.Matrix3()
-        self.rot_matrix = euclid.Matrix3()
-        self.inv_rot_matrix = euclid.Matrix3()
+        # Polar mass moment of inertia for a rectangular plate
+        self.inertia = (mass * ((size.x * size.x) + (size.y * size.y))) / 12.0
 
         self.force = pygame.math.Vector2()
         self.torque = 0
 
+        self.cache_matrices()
+
+    # Set the position and rotation of the rigid body
+    # @param position [pygame.math.Vector2] center of rigid body in world space
+    # @param angle [float] rotation in radians counter-clockwise
     def set_position(self, position, angle):
         self.pos = position
         self.angle = angle
-        self.cache_output()
+        self.cache_matrices()
 
-    def add_world_force(self, world_force, world_offset):
-        self.force += world_force
-        world_torque = world_offset.cross(world_force)
-        print("*************")
-        print("force   ="+str(world_force))
-        print("offset  ="+str(world_offset))
-        print("torque_w="+str(world_torque))
-        print("*************")
-        self.torque += world_torque
-
-    def add_rel_force(self, force, offset):
-        #print("Adding rel force="+str(force)+" @ "+str(offset))
-        # Rotate force back to the world coordinate system. We don't want to
-        # translate it because its components are positional (they are magnitudes along axes)
-        #world_force = self.rot_matrix * force
-        # Transform the offset to be world (this rotates and translates it)
-        #world_offset = self.relative_to_world(offset)
-        #self.add_world_force(world_force, world_offset)
-        print("*****************")
-        print("force="+str(force))
-        force = self.rot_relative_to_world(force)
-
+    # @param force [pygame.math.Vector2] force in world space
+    # @param pos [pygame.math.Vector2] position where force is applied in world space
+    def add_world_force(self, force, pos):
         self.force += force
-        self.torque += self.rot_relative_to_world(offset).cross(force)
+        # Offset relative to rigid body center in world axes
+        offset = position - self.pos
+        self.torque += offset.cross(force)
 
+    # @param force [pygame.math.Vector2] force in relative space
+    # @param offset [pygame.math.Vector2] offset where force is applied in relative space
+    def add_rel_force(self, force, offset):
+        world_force = self.rot_relative_to_world(force)
+        self.force += world_force
+        self.torque += offset.cross(force)
 
-        print("rel_force="+str(force))
-        print("offset="+str(self.rot_relative_to_world(offset)))
-        print("torque="+str(self.rot_relative_to_world(offset).cross(force)))
-        print("*****************")
-
+    # Performs integration over time period delta_t with the
+    # forces last added to the rigid body.
+    # @param delta_t [float] time elapsed in seconds since last update
     def update(self, delta_t):
         # Linear integration
         accel = self.force / self.mass
@@ -77,41 +68,59 @@ class RigidBody:
         # Reset torque
         self.torque = 0
 
-        self.cache_output()
+        self.cache_matrices()
 
-    def cache_output(self):
-        # Cache the output transforms
-        self.pos_matrix = euclid.Matrix3.new_translate(self.pos.x, self.pos.y)
-        self.rot_matrix = euclid.Matrix3.new_rotate(self.angle)
-        self.inv_rot_matrix = self.rot_matrix.inverse()
-
+    # Rotate a point from the relative coordinate system to the world coordinate system
+    # @param relative [pygame.math.Vector2] point in relative coordinate system
+    # @return [pygame.math.Vector2] point rotated into world coordinate system
     def rot_relative_to_world(self, relative):
         relative = euclid.Vector2(relative.x, relative.y)
         world = pygame.math.Vector2(self.rot_matrix * relative)
         return world
 
+    # Rotate a point from world to coordinate system.
+    # @param world [pygame.math.Vector2] point in world coordinate system
+    # @return [pygame.math.Vector2] point rotated into relative coordinate system
     def rot_world_to_relative(self, world):
         world = euclid.Vector2(world.x, world.y)
         rel = pygame.math.Vector2(self.inv_rot_matrix * world)
         return rel
 
+    # Rotate and translate a point from relative to world space.
+    # @param relative [pygame.math.Vector2] point in relative space
+    # @return [pygame.math.Vector2] point rotated and translated into world space
     def relative_to_world(self, relative):
         relative = euclid.Vector2(relative.x, relative.y)
         world = pygame.math.Vector2(self.rot_matrix * relative) + self.pos
         return world
 
+    # Rotate and translate a point from world to relative space.
+    # @param world [pygame.math.Vector2] point in world space
+    # @param [pygame.math.Vector2] point rotated and translated into relative space
     def world_to_relative(self, world):
         world = euclid.Vector2(world.x, world.y)
         rel = pygame.math.Vector2(self.inv_rot_matrix * (world - self.pos))
         return rel
 
+    # Calcualtes the velocity of a point attached to the rigid body in relative space
+    # @param rel [pygame.math.Vector2] point in relative space
+    # @return [pygame.math.Vector2] velocity of the point in relative space if it were attached to the rigid body
     def rel_point_vel(self, rel):
         tangent = pygame.math.Vector2(-rel.y, rel.x)
         rel_vel = (tangent * self.ang_vel) + self.rot_world_to_relative(self.vel)
         return rel_vel
 
+    # Calculates the velocity of a pont attached to the rigid body in world space
+    # @param world [pygame.math.Vector2] point in world space
+    # @return [pygame.math.Vector2] velocity of the point in world space if it were attached to the rigid body
     def world_point_vel(self, world):
         offset = world - self.pos
         tangent = pygame.math.Vector2(-offset.y, offset.x)
         world_vel = (tangent * self.ang_vel) + self.vel
         return world_vel
+
+    # Caches the rotation and inverse-rotation matrices for the rigid body
+    def cache_matrices(self):
+        # Cache rotation matrices
+        self.rot_matrix = euclid.Matrix3.new_rotate(self.angle)
+        self.inv_rot_matrix = self.rot_matrix.inverse()
